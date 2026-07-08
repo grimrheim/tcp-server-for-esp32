@@ -43,13 +43,25 @@ void *handle_client(void *arg) {
  
     pthread_mutex_lock(&mutex);
     push_back(&list, t, s, client_fd);
+    pthread_mutex_unlock(&mutex);
+    pthread_mutex_lock(&mutex);
     print_list(&list);
     pthread_mutex_unlock(&mutex);
 
     if (send(client_fd, "Hello, world", 13, 0) == -1)
         perror("send");
+    // Буфер символов, чтобы был сразу размер элемента 1 байт.
+    char buf[1024];
+    ssize_t n;
+    while ((n = recv(client_fd, buf, sizeof(buf), 0)) > 0) {
+        printf("Accepted %zd bytes from %s\n", n, s);
+    }
+    if (n < 0) perror("recv");
+
     close(client_fd);
+    pthread_mutex_lock(&mutex);
     remove_client(&list, client_fd);
+    pthread_mutex_unlock(&mutex);
     return NULL;
 }
 
