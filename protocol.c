@@ -1,5 +1,6 @@
 #include "protocol.h"
 #include <stddef.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -31,14 +32,21 @@ void header_unpack(const uint8_t *buf, Header *h) {
 }
 
 ssize_t read_header(int fd, Header *h) {
-    size_t total_read = 0;
     uint8_t buf[HEADER_SIZE];
     ssize_t n;
-    while (total_read < HEADER_SIZE) {
-        if ((n = recv(fd, buf + total_read, HEADER_SIZE - total_read, 0)) < 1)
+    if ((n = recv_all(fd, buf, HEADER_SIZE)) < 1)
+        return n;
+    header_unpack(buf, h); 
+    return 1;
+}
+
+ssize_t recv_all(int fd, uint8_t *buf, uint16_t length) {
+    ssize_t n = 0;
+    size_t total_read = 0;
+    while (total_read < length) {
+        if ((n = recv(fd, buf + total_read, length - total_read, 0)) < 1)
             return n;
         total_read += n;
     }
-    header_unpack(buf, h);
-    return 1;
+    return total_read;
 }

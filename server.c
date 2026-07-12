@@ -8,6 +8,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <time.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include "server.h"
 #include "client_list.h"
 #include "protocol.h"
@@ -56,14 +58,20 @@ void *handle_client(void *arg) {
 
     // ssize_t - специальный формат, содержит положительные целые числа,
     // 0 и -1. [-1, SSIZE_MAX]
-    ssize_t n;
+    ssize_t n;      // переменная для значения recv для header
+    ssize_t p = 0;      // переменная для значения recv для payload
     Header h;
-
-    // провепроверка работы протокола в соседнем терминале:
+    // проверка работы протокола в соседнем терминале:
     // printf '\x01\x00\x2a' | nc 127.0.0.1 3490
     while ((n = read_header(client_fd, &h)) > 0) {
-        printf("Type: %d;\nLength: %d.\n", h.type, h.length);
+        printf("Type: %d\nLength: %d\n", h.type, h.length);
+        uint8_t *payload = malloc(sizeof(uint8_t) * h.length);
+        p = recv_all(client_fd, payload, h.length);
+        if (p > 0)
+            printf("Payload: %zd\n", p);
+        free(payload);
     }
+    if (p < 0) perror("recv payload");
     if (n < 0) perror("recv");
 
     close(client_fd);

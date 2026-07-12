@@ -15,3 +15,5 @@ typedef struct {
 void header_pack(const Header *h, uint8_t *buf);
 void header_unpack(const uint8_t *buf, Header *h);
 ssize_t read_header(int fd, Header *h);
+ssize_t recv_all(int fd, uint8_t *buf, uint16_t length);
+
