@@ -1,6 +1,8 @@
 // POSIX не является стандартом C. 
 // Чтобы подключить расширения для сети, добавляем _GNU_SOURCE
 #define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <netinet/in.h>
@@ -8,6 +10,7 @@
 #include <time.h>
 #include "server.h"
 #include "client_list.h"
+#include "protocol.h"
 
 #define PORT "3490"
 #define BACKLOG 10
@@ -50,11 +53,16 @@ void *handle_client(void *arg) {
 
     if (send(client_fd, "Hello, world", 13, 0) == -1)
         perror("send");
-    // Буфер символов, чтобы был сразу размер элемента 1 байт.
-    char buf[1024];
+
+    // ssize_t - специальный формат, содержит положительные целые числа,
+    // 0 и -1. [-1, SSIZE_MAX]
     ssize_t n;
-    while ((n = recv(client_fd, buf, sizeof(buf), 0)) > 0) {
-        printf("Accepted %zd bytes from %s\n", n, s);
+    Header h;
+
+    // провепроверка работы протокола в соседнем терминале:
+    // printf '\x01\x00\x2a' | nc 127.0.0.1 3490
+    while ((n = read_header(client_fd, &h)) > 0) {
+        printf("Type: %d;\nLength: %d.\n", h.type, h.length);
     }
     if (n < 0) perror("recv");
 
