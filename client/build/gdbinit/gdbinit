@@ -1,0 +1,2 @@
+source /home/gorgoroth/Documents/dev/networks/tcp-server/client/build/gdbinit/symbols
+source /home/gorgoroth/Documents/dev/networks/tcp-server/client/build/gdbinit/connect
