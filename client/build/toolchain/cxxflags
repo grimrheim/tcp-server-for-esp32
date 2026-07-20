@@ -1,7 +1,0 @@
--Wno-frame-address
--mlongcalls
--fno-builtin-memcpy
--fno-builtin-memset
--fno-builtin-bzero
-"-specs=/home/gorgoroth/Documents/dev/networks/tcp-server/client/build/specs/picolibc.specs"
--fno-rtti

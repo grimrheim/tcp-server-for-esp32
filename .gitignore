@@ -1,4 +1,10 @@
-*.md
 *.o
 /client/creds.h
-
+/client/build
+/client/sdkconfig
+/client/sdkconfig.old
+/client/.clangd
+/client/managed_components
+/client/dependencies.lock
+/server/compile_commands.json
+/server/server

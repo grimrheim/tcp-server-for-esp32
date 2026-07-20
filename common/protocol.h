@@ -10,8 +10,9 @@ typedef enum {
 /* 
 * type - тип устройства клиента,
 * length - длинна сообщения
+* __attribute__ - чтобы исключить ошибку между GCC/Clang и Xtensa
 */
-typedef struct {
+typedef struct __attribute__((packed)){
     uint8_t type;
     uint16_t length;
 } Header;
