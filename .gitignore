@@ -1,2 +1,4 @@
 *.md
 *.o
+/client/creds.h
+

@@ -50,3 +50,7 @@ ssize_t recv_all(int fd, uint8_t *buf, uint16_t length) {
     }
     return total_read;
 }
+
+void esp32_data_pack(const ESP32_data *data, uint8_t *buf) {
+
+}
