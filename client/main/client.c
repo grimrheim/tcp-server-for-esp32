@@ -1,4 +1,5 @@
 #include <machine/endian.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
@@ -28,6 +29,71 @@ static const char *TAG = "tcp_client";
 static EventGroupHandle_t wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 
+void send_data(int sock) {
+    // Формирование TLV-пакета
+    ESP32_data payload = {};
+    esp_err_t mac_err = esp_wifi_get_mac(WIFI_IF_STA, payload.mac);
+    if (mac_err != ESP_OK) ESP_LOGE(TAG, "esp_wifi_get_mac failed: %s", esp_err_to_name(mac_err));
+
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ip_info;
+    esp_err_t ip_err = esp_netif_get_ip_info(netif, &ip_info);
+    if (ip_err != ESP_OK) ESP_LOGE(TAG, "esp_netif_get_ip_info failed: %s", esp_err_to_name(ip_err));
+    memcpy(payload.ip, &ip_info.ip.addr, 4);
+
+
+    Header hdr = {
+        .type = ESP_TYPE,
+        .length = sizeof(payload)
+    };
+
+    uint8_t frame[sizeof(hdr) + sizeof(payload)];
+    header_pack(&hdr, frame);
+    memcpy(frame + HEADER_SIZE, &payload, sizeof(payload));
+
+    int to_write = sizeof(frame);
+    int written = 0;
+    while (to_write > 0) {
+        int n = send(sock, frame + written, to_write, 0);
+        if (n < 0) {
+            ESP_LOGE(TAG, "send() failed: errno %d", errno);
+            break;
+        }
+        written += n;
+        to_write -= n;
+    }
+    ESP_LOGI(TAG, "sent %d bytes", written);
+}
+
+void receive_data(int sock) {
+    uint8_t message_buf[HEADER_SIZE + 1];       // Header + status
+    int message_len = recv_all(sock, message_buf, sizeof(message_buf));
+    ESP_LOGI(TAG, "received %d bytes", message_len);
+    for (size_t i = 0; i < message_len; i++) {
+        ESP_LOGI(TAG, "byte[%d]=0x%02x",i, message_buf[i]);
+    }
+    Header hdr;
+    if (message_len == sizeof(message_buf)) {
+        header_unpack(message_buf, &hdr);
+        uint8_t status = message_buf[HEADER_SIZE];
+        if (hdr.type == ACK_TYPE) {
+            if (status == ACK_SUCCESS) {
+                ESP_LOGI(TAG, "server acked, success");
+            }
+        }
+        else if (hdr.type == CMD_REMOTE) {
+            if (status == CMD_LED_BLINK) {
+
+            }
+        }
+    }
+    else if (message_len < 0) {
+        ESP_LOGE(TAG, "recv(ack) failed: errno %d", errno);
+    } else {
+        ESP_LOGW(TAG, "server closed connection without ack");
+    }
+}
+
 void tcp_client_task(void *pvParameters) {
     while (1) {
         struct sockaddr_in dest_addr;
@@ -51,39 +117,8 @@ void tcp_client_task(void *pvParameters) {
         }
         ESP_LOGI(TAG, "connected to %s:%d", SERVER_IP, SERVER_PORT);
 
-        // Формирование TLV-пакета
-        ESP32_data payload = {};
-        esp_err_t mac_err = esp_wifi_get_mac(WIFI_IF_STA, payload.mac);
-        if (mac_err != ESP_OK) ESP_LOGE(TAG, "esp_wifi_get_mac failed: %s", esp_err_to_name(mac_err));
-
-        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-        esp_netif_ip_info_t ip_info;
-        esp_err_t ip_err = esp_netif_get_ip_info(netif, &ip_info);
-        if (ip_err != ESP_OK) ESP_LOGE(TAG, "esp_netif_get_ip_info failed: %s", esp_err_to_name(ip_err));
-        memcpy(payload.ip, &ip_info.ip.addr, 4);
-
-
-        Header hdr = {
-            .type = 0x01,
-            .length = htons(sizeof(payload))
-        };
-        
-        uint8_t frame[sizeof(hdr) + sizeof(payload)];
-        memcpy(frame, &hdr, sizeof(hdr));
-        memcpy(frame + sizeof(hdr), &payload, sizeof(payload));
-
-        int to_write = sizeof(frame);
-        int written = 0;
-        while (to_write > 0) {
-            int n = send(sock, frame + written, to_write, 0);
-            if (n < 0) {
-                ESP_LOGE(TAG, "send() failed: errno %d", errno);
-                break;
-            }
-            written += n;
-            to_write -= n;
-        }
-        ESP_LOGI(TAG, "sent %d bytes", written);
+        send_data(sock);
+        receive_data(sock);
 
         shutdown(sock, SHUT_RDWR);
         close(sock);

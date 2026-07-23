@@ -1,5 +1,6 @@
 // POSIX не является стандартом C. 
 // Чтобы подключить расширения для сети, добавляем _GNU_SOURCE
+#include <asm-generic/errno.h>
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +14,7 @@
 #include "server.h"
 #include "client_list.h"
 #include "protocol.h"
+#include <errno.h>
 
 #define PORT "3490"
 #define BACKLOG 10
@@ -24,6 +26,30 @@ void *get_in_addr(struct sockaddr *sa) {
     if (sa->sa_family == AF_INET)
         return &(((struct sockaddr_in*)sa)->sin_addr);
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+void send_command(int fd, uint8_t status) {
+    uint8_t frame[HEADER_SIZE + 1];
+    size_t frame_len;
+    switch (status) {
+        case ACK_TYPE:
+            frame_len = ack_pack(frame, status);
+            break;
+        case CMD_REMOTE:
+            frame_len = cmd_pack(frame, status);
+    }
+
+    ssize_t to_write = frame_len;
+    ssize_t written = 0;
+    while (to_write > 0) {
+        ssize_t n = send(fd, frame + written, to_write, 0);
+        if (n < 0) {
+            perror("send (status)");
+            return;
+        }
+        written += n;
+        to_write -= n;
+    }
 }
 
 void *handle_client(void *arg) {
@@ -53,26 +79,48 @@ void *handle_client(void *arg) {
     print_list(&list);
     pthread_mutex_unlock(&mutex);
 
-    if (send(client_fd, "Hello, world", 13, 0) == -1)
-        perror("send");
+    /*
+     * ssize_t - специальный формат, содержит положительные целые числа,
+     * 0 и -1. [-1, SSIZE_MAX]
+     */
 
-    // ssize_t - специальный формат, содержит положительные целые числа,
-    // 0 и -1. [-1, SSIZE_MAX]
-    ssize_t n;      // переменная для значения recv для header
+    ssize_t n = 0;      // переменная для значения recv для header
     ssize_t p = 0;      // переменная для значения recv для payload
     Header h;
-    // проверка работы протокола в соседнем терминале:
-    // printf '\x01\x00\x2a' | nc 127.0.0.1 3490
+
+    /*
+     * проверка работы протокола в соседнем терминале:
+     * printf '\x01\x00\x2a' | nc 127.0.0.1 3490
+     */
+
     while ((n = read_header(client_fd, &h)) > 0) {
         printf("Type: %d\nLength: %d\n", h.type, h.length);
         uint8_t *payload = malloc(sizeof(uint8_t) * h.length);
+        if (!payload) {
+            perror("malloc");
+            break;
+        }
         p = recv_all(client_fd, payload, h.length);
-        if (p > 0)
-            printf("Payload: %zd\n", p);
-        free(payload);
+        if (p > 0) {
+            if (h.type == ESP_TYPE) {
+                read_esp_data(payload);
+                send_command(client_fd, ACK_SUCCESS);
+            }
+            free(payload);
+        }
     }
-    if (p < 0) perror("recv payload");
-    if (n < 0) perror("recv");
+    if (p <= 0) perror("recv payload");
+    if (n < 0) {
+        if (errno == ECONNRESET) {
+            printf("client reset connection\n");
+        }
+        else {
+            perror("read header");
+        }
+    }
+    else {
+        printf("client disconneted\n");
+    }
 
     close(client_fd);
     pthread_mutex_lock(&mutex);
@@ -116,7 +164,7 @@ int create_server_socket() {
         break;
     }
     freeaddrinfo(servinfo);
-    
+
     if (p == NULL) {
         fprintf(stderr, "server: failed to bind\n");
         exit(1);
